@@ -91,11 +91,17 @@ async function initializeMap(identityPoolId, region, mapName) {
       identityPoolId
     );
 
+    let zoomLevel = 4;
+
+    if (window.innerWidth < 768) {
+      zoomLevel -= 2;
+    }
+
     const map = new maplibregl.Map({
       container: "map",
       style: `https://maps.geo.${region}.amazonaws.com/maps/v0/maps/${mapName}/style-descriptor`,
       center: [-98.5795, 39.8283],
-      zoom: 4,
+      zoom: zoomLevel,
       ...authHelper.getMapAuthenticationOptions(),
     });
 

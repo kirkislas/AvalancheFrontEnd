@@ -139,7 +139,7 @@ function addAccidentsToMap(accidents, map) {
     const latitude = accident.latitude;
 
     new maplibregl.Marker()
-      .setLngLat([latitude, longitude])
+      .setLngLat([longitude, latitude])
       .setPopup(
         new maplibregl.Popup({ offset: 25 }).setHTML(
           `<h3>${accident.location}</h3><p>${accident.description}</p><p>Date: ${accident.date}</p>`

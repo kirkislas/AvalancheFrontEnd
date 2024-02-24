@@ -148,7 +148,7 @@ function addAccidentsToMap(accidents, map) {
       .setLngLat([longitude, latitude])
       .setPopup(
         new maplibregl.Popup({ offset: 25 }).setHTML(
-          `<h3>${accident.location}</h3><p>${accident.description}</p><p>Date: ${accident.date}</p>`
+          `<h3>${accident.location}, ${accident.state}</h3><p>${accident.description}</p><p>Date: ${accident.date}</p>`
         )
       )
       .addTo(map);

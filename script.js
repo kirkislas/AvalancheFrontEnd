@@ -138,27 +138,34 @@ function calculateNextUpdateTimestamp() {
 // Fetch data with caching logic
 async function fetchAccidentsData() {
   const cachedData = localStorage.getItem("accidentsData");
+  console.log("Cached data retrieved:", cachedData);
   let accidents;
 
   if (cachedData) {
     const { data, expiry } = JSON.parse(cachedData);
+    console.log("Parsed cached data:", data, "Expiry:", expiry);
 
     if (expiry > Date.now()) {
       // Use cached data if it's not expired
       accidents = data;
+      console.log("Using cached accidents data:", accidents);
     }
   }
 
   // If there's no valid cached data, fetch new data
   if (!accidents) {
     try {
+      console.log("Fetching new accidents data from backend...");
       const response = await fetch(
         "https://avalanchebackend.onrender.com/api/accidents/"
       );
+      console.log("Response status:", response.status);
       if (!response.ok) {
         handleError(new FetchAccidentsError());
+        return;
       }
       accidents = await response.json();
+      console.log("New accidents data fetched:", accidents);
 
       // Cache the new data with an expiry timestamp
       localStorage.setItem(
@@ -168,14 +175,22 @@ async function fetchAccidentsData() {
           expiry: calculateNextUpdateTimestamp(),
         })
       );
+      console.log("New accidents data cached");
     } catch (error) {
+      console.error("Fetching accidents data failed:", error);
       handleError(error);
       return; // Exit the function if an error occurs
     }
   }
 
+  if (!Array.isArray(accidents)) {
+    console.error("Expected an array for accidents, received:", accidents); // Log 8: Validate accidents structure
+    handleError(new Error("Fetched data is not in expected format."));
+    return;
+  }
+
   // Add accidents data to the map
-  addAccidentsToMap(accidents, map);
+  addAccidentsToMap(accidents);
 }
 
 // Adds markers to the map for each accident, ensuring valid latitude and longitude

@@ -11,6 +11,8 @@ class NetworkError extends AppError {}
 class DataFetchError extends AppError {}
 class MapInitializationError extends AppError {}
 class FetchAccidentsError extends AppError {}
+class MarkerError extends AppError {}
+class CoordinatesError extends AppError {}
 
 // Define a mapping from error constructors to error messages
 const errorMessageMapping = {
@@ -18,6 +20,8 @@ const errorMessageMapping = {
   [DataFetchError.name]: "Problem fetching data.",
   [MapInitializationError.name]: "Failed to initialize the map.",
   [FetchAccidentsError.name]: "Could not load accident data.",
+  [MarkerError.name]: "Error displaying map markers",
+  [CoordinatesError.name]: "Invalid latitudes and longitudes",
 };
 
 function handleError(error) {
@@ -48,14 +52,12 @@ function displayUserErrorMessage(message) {
   errorContainer.style.display = "block";
 }
 
-document.addEventListener("DOMContentLoaded", function () {
-  fetchAWSCredentialsAndInitializeMap()
-    .then(() => {
-      // Initialization complete
-    })
-    .catch((error) => {
-      handleError(error);
-    });
+document.addEventListener("DOMContentLoaded", async function () {
+  try {
+    await fetchAWSCredentialsAndInitializeMap(); // Fetch AWS credentials and initialize map
+  } catch (error) {
+    handleError(error); // Handle errors from both processes
+  }
 });
 
 // Fetches AWS credentials and initializes the map
@@ -65,39 +67,40 @@ async function fetchAWSCredentialsAndInitializeMap() {
       "https://avalanchebackend.onrender.com/api/aws-credentials/"
     );
     if (!credentialsResponse.ok) {
-      throw new NetworkError(
-        `HTTP error! status: ${credentialsResponse.status}`
-      );
+      // Directly handle the error with a more specific message
+      handleError(new DataFetchError("Failed to fetch AWS credentials."));
+      return; // Stop execution to prevent further errors
     }
     const { identityPoolId, region, mapName } =
       await credentialsResponse.json();
 
     initializeMap(identityPoolId, region, mapName);
   } catch (error) {
-    if (error instanceof NetworkError) {
-      // Handle network errors here, possibly re-throwing as a more specific error if needed
-      throw new DataFetchError("Failed to fetch AWS credentials.");
-    } else {
-      throw error; // Re-throw other errors unchanged
-    }
+    // General catch block for unexpected errors
+    handleError(
+      new DataFetchError(
+        "An unexpected error occurred while fetching AWS credentials."
+      )
+    );
   }
 }
+
+let map;
 
 // Initializes the map and adds markers for each accident
 async function initializeMap(identityPoolId, region, mapName) {
   try {
-    // Correctly using `withIdentityPoolId` as per the provided documentation
     const authHelper = await amazonLocationAuthHelper.withIdentityPoolId(
       identityPoolId
     );
 
     let zoomLevel = 4;
-
     if (window.innerWidth < 768) {
       zoomLevel -= 2;
     }
 
-    const map = new maplibregl.Map({
+    // Initialize the global 'map' object
+    map = new maplibregl.Map({
       container: "map",
       style: `https://maps.geo.${region}.amazonaws.com/maps/v0/maps/${mapName}/style-descriptor`,
       center: [-98.5795, 39.8283],
@@ -107,50 +110,104 @@ async function initializeMap(identityPoolId, region, mapName) {
 
     map.addControl(new maplibregl.NavigationControl(), "top-left");
 
-    let accidents = localStorage.getItem("accidentsData");
-    if (accidents) {
-      accidents = JSON.parse(accidents);
-      addAccidentsToMap(accidents, map);
-    } else {
-      await fetchAccidentsData(map);
-    }
+    // Load event for when the map is ready to add markers
+    map.on("load", async () => {
+      await fetchAccidentsData(); // Fetch accident data after map is loaded
+    });
   } catch (error) {
-    // Assuming handleError is a function that handles errors appropriately
-    handleError(new MapInitializationError("Map initialization failed."));
+    handleError(new MapInitializationError());
   }
 }
 
-// Fetches accidents data from the backend and caches it
-async function fetchAccidentsData(map) {
-  try {
-    const response = await fetch(
-      "https://avalanchebackend.onrender.com/api/accidents/"
-    );
-    if (!response.ok) {
-      throw new FetchAccidentsError(`HTTP error! status: ${response.status}`);
-    }
-    const accidents = await response.json();
+// Helper function to calculate the next update timestamp
+function calculateNextUpdateTimestamp() {
+  const now = new Date();
+  const firstOfTheMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const fifteenthOfTheMonth = new Date(now.getFullYear(), now.getMonth(), 15);
+  const firstOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-    localStorage.setItem("accidentsData", JSON.stringify(accidents));
-    addAccidentsToMap(accidents, map);
-  } catch (error) {
-    handleError(error);
+  if (now < firstOfTheMonth) {
+    return firstOfTheMonth.getTime();
+  } else if (now >= firstOfTheMonth && now < fifteenthOfTheMonth) {
+    return fifteenthOfTheMonth.getTime();
+  } else {
+    return firstOfNextMonth.getTime();
   }
+}
+
+// Fetch data with caching logic
+async function fetchAccidentsData() {
+  const cachedData = localStorage.getItem("accidentsData");
+  let accidents;
+
+  if (cachedData) {
+    const { data, expiry } = JSON.parse(cachedData);
+
+    if (expiry > Date.now()) {
+      // Use cached data if it's not expired
+      accidents = data;
+    }
+  }
+
+  // If there's no valid cached data, fetch new data
+  if (!accidents) {
+    try {
+      const response = await fetch(
+        "https://avalanchebackend.onrender.com/api/accidents/"
+      );
+      if (!response.ok) {
+        handleError(new FetchAccidentsError());
+      }
+      accidents = await response.json();
+
+      // Cache the new data with an expiry timestamp
+      localStorage.setItem(
+        "accidentsData",
+        JSON.stringify({
+          data: accidents,
+          expiry: calculateNextUpdateTimestamp(),
+        })
+      );
+    } catch (error) {
+      handleError(error);
+      return; // Exit the function if an error occurs
+    }
+  }
+
+  // Add accidents data to the map
+  addAccidentsToMap(accidents, map);
 }
 
 // Adds markers to the map for each accident, ensuring valid latitude and longitude
-function addAccidentsToMap(accidents, map) {
-  accidents.forEach((accident) => {
-    const longitude = accident.longitude;
-    const latitude = accident.latitude;
+function addAccidentsToMap(accidents) {
+  // Check if the map object is defined
+  if (!map) {
+    handleError(new MarkerError());
+    return; // Exit the function if the map is not defined
+  }
 
-    new maplibregl.Marker()
-      .setLngLat([longitude, latitude])
-      .setPopup(
-        new maplibregl.Popup({ offset: 25 }).setHTML(
-          `<h3>${accident.location}, ${accident.state}</h3><p>${accident.description}</p><p>Date: ${accident.date}</p>`
+  accidents.forEach((accident) => {
+    // Ensure latitude and longitude are defined and are numbers
+    if (
+      typeof accident.latitude !== "number" ||
+      typeof accident.longitude !== "number"
+    ) {
+      handleError(new CoordinatesError());
+      return; // Skip this iteration if latitude or longitude data is invalid
+    }
+
+    try {
+      // Proceed to create and add the marker with a popup
+      new maplibregl.Marker()
+        .setLngLat([accident.longitude, accident.latitude])
+        .setPopup(
+          new maplibregl.Popup({ offset: 25 }).setHTML(
+            `<h3>${accident.location}, ${accident.state}</h3><p>${accident.description}</p><p>Date: ${accident.date}</p>`
+          )
         )
-      )
-      .addTo(map);
+        .addTo(map);
+    } catch (error) {
+      handleError(new MarkerError());
+    }
   });
 }

@@ -12,7 +12,6 @@ class DataFetchError extends AppError {}
 class MapInitializationError extends AppError {}
 class FetchAccidentsError extends AppError {}
 class MarkerError extends AppError {}
-class CoordinatesError extends AppError {}
 
 // Define a mapping from error constructors to error messages
 const errorMessageMapping = {
@@ -21,7 +20,6 @@ const errorMessageMapping = {
   [MapInitializationError.name]: "Failed to initialize the map.",
   [FetchAccidentsError.name]: "Could not load accident data.",
   [MarkerError.name]: "Error displaying map markers",
-  [CoordinatesError.name]: "Invalid latitudes and longitudes",
 };
 
 function handleError(error) {
@@ -207,7 +205,6 @@ function addAccidentsToMap(accidents) {
       typeof accident.latitude !== "number" ||
       typeof accident.longitude !== "number"
     ) {
-      handleError(new CoordinatesError());
       return; // Skip this iteration if latitude or longitude data is invalid
     }
 

@@ -12,6 +12,7 @@ class DataFetchError extends AppError {}
 class MapInitializationError extends AppError {}
 class FetchAccidentsError extends AppError {}
 class MarkerError extends AppError {}
+class FormatError extends AppError {}
 
 // Define a mapping from error constructors to error messages
 const errorMessageMapping = {
@@ -20,6 +21,7 @@ const errorMessageMapping = {
   [MapInitializationError.name]: "Failed to initialize the map.",
   [FetchAccidentsError.name]: "Could not load accident data.",
   [MarkerError.name]: "Error displaying map markers",
+  [FormatError.name]: "Fetched data is not in expected format",
 };
 
 function handleError(error) {
@@ -65,21 +67,24 @@ async function fetchAWSCredentialsAndInitializeMap() {
       "https://avalanchebackend.onrender.com/api/aws-credentials/"
     );
     if (!credentialsResponse.ok) {
-      // Directly handle the error with a more specific message
-      handleError(new DataFetchError("Failed to fetch AWS credentials."));
-      return; // Stop execution to prevent further errors
+      throw new Error(
+        `Failed to fetch AWS credentials: status ${credentialsResponse.status}`
+      );
     }
     const { identityPoolId, region, mapName } =
       await credentialsResponse.json();
-
     initializeMap(identityPoolId, region, mapName);
   } catch (error) {
-    // General catch block for unexpected errors
-    handleError(
-      new DataFetchError(
-        "An unexpected error occurred while fetching AWS credentials."
-      )
-    );
+    // Handle fetch-specific errors or other unexpected errors
+    if (error.message.includes("Failed to fetch")) {
+      handleError(new DataFetchError(error.message));
+    } else {
+      handleError(
+        new DataFetchError(
+          "An unexpected error occurred while fetching AWS credentials."
+        )
+      );
+    }
   }
 }
 
@@ -136,34 +141,28 @@ function calculateNextUpdateTimestamp() {
 // Fetch data with caching logic
 async function fetchAccidentsData() {
   const cachedData = localStorage.getItem("accidentsData");
-  console.log("Cached data retrieved:", cachedData);
   let accidents;
 
   if (cachedData) {
     const { data, expiry } = JSON.parse(cachedData);
-    console.log("Parsed cached data:", data, "Expiry:", expiry);
 
     if (expiry > Date.now()) {
       // Use cached data if it's not expired
       accidents = data;
-      console.log("Using cached accidents data:", accidents);
     }
   }
 
   // If there's no valid cached data, fetch new data
   if (!accidents) {
     try {
-      console.log("Fetching new accidents data from backend...");
       const response = await fetch(
         "https://avalanchebackend.onrender.com/api/accidents/"
       );
-      console.log("Response status:", response.status);
       if (!response.ok) {
         handleError(new FetchAccidentsError());
         return;
       }
       accidents = await response.json();
-      console.log("New accidents data fetched:", accidents);
 
       // Cache the new data with an expiry timestamp
       localStorage.setItem(
@@ -173,17 +172,14 @@ async function fetchAccidentsData() {
           expiry: calculateNextUpdateTimestamp(),
         })
       );
-      console.log("New accidents data cached");
     } catch (error) {
-      console.error("Fetching accidents data failed:", error);
       handleError(error);
       return; // Exit the function if an error occurs
     }
   }
 
   if (!Array.isArray(accidents)) {
-    console.error("Expected an array for accidents, received:", accidents); // Log 8: Validate accidents structure
-    handleError(new Error("Fetched data is not in expected format."));
+    handleError(new FormatError("Fetched data is not in expected format."));
     return;
   }
 

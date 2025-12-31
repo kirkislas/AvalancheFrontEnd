@@ -253,14 +253,17 @@ function addAccidentsToMap(accidents) {
 
     try {
       // Proceed to create and add the marker with a popup
-      new maplibregl.Marker()
+      const marker = new maplibregl.Marker()
         .setLngLat([accident.longitude, accident.latitude])
         .setPopup(
           new maplibregl.Popup({ offset: 25 }).setHTML(
             buildPopupHtmlV2(accident)
           )
-        )
-        .addTo(map);
+        );
+      marker.getElement().addEventListener("click", () => {
+        console.log("clicked accident", accident);
+      });
+      marker.addTo(map);
     } catch (error) {
       handleError(new MarkerError());
     }

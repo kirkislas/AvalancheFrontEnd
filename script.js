@@ -325,9 +325,62 @@ function containsPlaceholder(value, tokens) {
   return tokens.includes(normalized);
 }
 
+function cleanLocationLabel(location) {
+  if (typeof location !== "string" || location.trim().length === 0) {
+    return "Unknown location";
+  }
+
+  const tokens = location
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  const stateNameByAbbreviation = {
+    ca: "california",
+    ak: "alaska",
+    nh: "new hampshire",
+    or: "oregon",
+    wa: "washington",
+    id: "idaho",
+    mt: "montana",
+    wy: "wyoming",
+    ut: "utah",
+    co: "colorado",
+    nm: "new mexico",
+    nv: "nevada",
+    az: "arizona",
+  };
+
+  const seen = new Set();
+  const cleaned = [];
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const normalized = token.toLowerCase();
+    const fullStateName = stateNameByAbbreviation[normalized];
+
+    if (
+      fullStateName &&
+      index + 1 < tokens.length &&
+      tokens[index + 1].toLowerCase() === fullStateName
+    ) {
+      continue;
+    }
+
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      cleaned.push(token);
+    }
+  }
+
+  return cleaned.length > 0 ? cleaned.join(", ") : "Unknown location";
+}
+
+// console.info(cleanLocationLabel("CA, California")); // "California"
+// console.info(cleanLocationLabel("Idaho, Idaho, Idaho")); // "Idaho"
+// console.info(cleanLocationLabel("Near Paulina Peak, Oregon, Oregon")); // "Near Paulina Peak, Oregon"
+
 function buildPopupHtmlV2(accident) {
-  const location = escapeHtml(accident.location);
-  const state = escapeHtml(accident.state);
+  const locationLabel = escapeHtml(cleanLocationLabel(accident.location));
   const summary = escapeHtml(
     accident.summary_description || "No summary available"
   );
@@ -345,7 +398,7 @@ function buildPopupHtmlV2(accident) {
       )}</p></details>`
     : "";
 
-  return `<h3>${location}</h3><p>${summary}</p><p>Date: ${displayDate}</p>${fullDescription}`;
+  return `<h3>${locationLabel}</h3><p>${summary}</p><p>Date: ${displayDate}</p>${fullDescription}`;
 }
 
 function escapeHtml(value) {

@@ -304,10 +304,6 @@ function isValidAccidentForMapV2(accident) {
     return false;
   }
 
-  if (accident.location.toLowerCase().includes("cowboy stadium")) {
-    return false;
-  }
-
   const placeholderTokens = ["unknown", "n/a", "na", "null", "none", "-"];
   if (
     containsPlaceholder(accident.location, placeholderTokens) ||

@@ -151,7 +151,7 @@ function calculateNextUpdateTimestamp() {
 
 // Fetch data with caching logic
 async function fetchAccidentsData() {
-  const cachedData = localStorage.getItem("accidentsData");
+  const cachedData = localStorage.getItem("accidentsData:silver:v2");
   let accidents;
 
   if (cachedData) {
@@ -192,7 +192,7 @@ async function fetchAccidentsData() {
 
       // Cache the new data with an expiry timestamp
       localStorage.setItem(
-        "accidentsData",
+        "accidentsData:silver:v2",
         JSON.stringify({
           data: normalizedAccidents,
           expiry: calculateNextUpdateTimestamp(),

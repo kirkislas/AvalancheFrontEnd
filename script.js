@@ -23,6 +23,7 @@ const errorMessageMapping = {
   [MarkerError.name]: "Error displaying map markers",
   [FormatError.name]: "Fetched data is not in expected format",
 };
+const MIN_EXTENDED_CHARS = 140;
 
 function handleError(error) {
   // Use the name of the error's constructor to get a specific message or use a generic message
@@ -50,6 +51,16 @@ function displayUserErrorMessage(message) {
 
   // Make the container visible
   errorContainer.style.display = "block";
+}
+
+function clearUserErrorMessage() {
+  const errorContainer = document.getElementById("error-message-container");
+  if (!errorContainer) {
+    return;
+  }
+
+  errorContainer.style.display = "none";
+  errorContainer.innerHTML = "";
 }
 
 document.addEventListener("DOMContentLoaded", async function () {
@@ -162,13 +173,28 @@ async function fetchAccidentsData() {
         handleError(new FetchAccidentsError());
         return;
       }
-      accidents = await response.json();
+      const rawAccidents = await response.json();
+      const normalizedAccidents = rawAccidents
+        .map((accident) => normalizeAccidentV2(accident))
+        .filter((accident) => isValidAccidentForMapV2(accident));
+      accidents = normalizedAccidents;
+      console.info(
+        "Accidents v2 stats:",
+        "fetched",
+        rawAccidents.length,
+        "normalized",
+        rawAccidents.length,
+        "filtered_out",
+        rawAccidents.length - normalizedAccidents.length,
+        "rendered",
+        normalizedAccidents.length
+      );
 
       // Cache the new data with an expiry timestamp
       localStorage.setItem(
         "accidentsData",
         JSON.stringify({
-          data: accidents,
+          data: normalizedAccidents,
           expiry: calculateNextUpdateTimestamp(),
         })
       );
@@ -176,11 +202,32 @@ async function fetchAccidentsData() {
       handleError(error);
       return; // Exit the function if an error occurs
     }
+  } else {
+    console.info(
+      "Accidents v2 stats:",
+      "fetched",
+      accidents.length,
+      "normalized",
+      accidents.length,
+      "filtered_out",
+      0,
+      "rendered",
+      accidents.length
+    );
   }
 
   if (!Array.isArray(accidents)) {
     handleError(new FormatError("Fetched data is not in expected format."));
     return;
+  }
+
+  if (accidents.length === 0) {
+    displayUserErrorMessage(
+      "No valid accident records available to display right now."
+    );
+    return;
+  } else {
+    clearUserErrorMessage();
   }
 
   // Add accidents data to the map
@@ -210,7 +257,7 @@ function addAccidentsToMap(accidents) {
         .setLngLat([accident.longitude, accident.latitude])
         .setPopup(
           new maplibregl.Popup({ offset: 25 }).setHTML(
-            `<h3>${accident.location}, ${accident.state}</h3><p>${accident.description}</p><p>Date: ${accident.date}</p>`
+            buildPopupHtmlV2(accident)
           )
         )
         .addTo(map);
@@ -218,4 +265,95 @@ function addAccidentsToMap(accidents) {
       handleError(new MarkerError());
     }
   });
+}
+
+// Normalize backend accident rows to the v2 display contract
+function normalizeAccidentV2(raw) {
+  return {
+    source_id: raw && raw.source_id != null ? raw.source_id : null,
+    location: raw && raw.location != null ? raw.location : null,
+    state: raw && raw.state != null ? raw.state : null,
+    latitude: raw && raw.latitude != null ? raw.latitude : null,
+    longitude: raw && raw.longitude != null ? raw.longitude : null,
+    display_date: raw && raw.display_date != null ? raw.display_date : null,
+    summary_description:
+      raw && raw.summary_description != null ? raw.summary_description : null,
+    full_description:
+      raw && raw.full_description != null ? raw.full_description : null,
+  };
+}
+
+function isValidAccidentForMapV2(accident) {
+  if (
+    !accident ||
+    !Number.isFinite(accident.latitude) ||
+    !Number.isFinite(accident.longitude)
+  ) {
+    return false;
+  }
+
+  if (
+    !isNonEmptyString(accident.location) ||
+    !isNonEmptyString(accident.state) ||
+    !isNonEmptyString(accident.summary_description) ||
+    !isNonEmptyString(accident.display_date)
+  ) {
+    return false;
+  }
+
+  if (accident.location.toLowerCase().includes("cowboy stadium")) {
+    return false;
+  }
+
+  const placeholderTokens = ["unknown", "n/a", "na", "null", "none", "-"];
+  if (
+    containsPlaceholder(accident.location, placeholderTokens) ||
+    containsPlaceholder(accident.state, placeholderTokens) ||
+    containsPlaceholder(accident.summary_description, placeholderTokens)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function containsPlaceholder(value, tokens) {
+  const normalized = String(value).trim().toLowerCase();
+  return tokens.includes(normalized);
+}
+
+function buildPopupHtmlV2(accident) {
+  const location = escapeHtml(accident.location);
+  const state = escapeHtml(accident.state);
+  const summary = escapeHtml(
+    accident.summary_description || "No summary available"
+  );
+  const displayDate = escapeHtml(accident.display_date || accident.date);
+  const fullDescriptionRaw =
+    typeof accident.full_description === "string"
+      ? accident.full_description.trim()
+      : "";
+  const fullDescriptionEligible =
+    fullDescriptionRaw.length >= MIN_EXTENDED_CHARS &&
+    fullDescriptionRaw.toLowerCase() !== "none additional";
+  const fullDescription = fullDescriptionEligible
+    ? `<details><summary>More details</summary><p>${escapeHtml(
+        fullDescriptionRaw
+      )}</p></details>`
+    : "";
+
+  return `<h3>${location}, ${state}</h3><p>${summary}</p><p>Date: ${displayDate}</p>${fullDescription}`;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }

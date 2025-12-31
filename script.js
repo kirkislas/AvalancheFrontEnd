@@ -345,7 +345,7 @@ function buildPopupHtmlV2(accident) {
       )}</p></details>`
     : "";
 
-  return `<h3>${location}, ${state}</h3><p>${summary}</p><p>Date: ${displayDate}</p>${fullDescription}`;
+  return `<h3>${location}</h3><p>${summary}</p><p>Date: ${displayDate}</p>${fullDescription}`;
 }
 
 function escapeHtml(value) {
